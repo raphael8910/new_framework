@@ -18,13 +18,24 @@ public class FrontServlet extends HttpServlet{
     }
     public void service(HttpServletRequest req, HttpServletResponse resp) throws IOException{
 
-        String path = req.getPathInfo();
+        String contextPath = req.getContextPath();
+        String requestURI = req.getRequestURI();   
+        String resourcePath = requestURI.substring(contextPath.length()); 
 
-        if(path==null){
-            path = "/";
+     
+        System.out.println("Resource path: " + resourcePath);
+
+       
+        if (getServletContext().getResource(resourcePath) != null) {
+            try {
+                getServletContext().getRequestDispatcher(resourcePath).forward(req, resp);
+                return;
+            } catch (Exception e) {
+            }
         }
-        System.out.println("URL :"+ path );
+             resp.setContentType("text/plain; charset=UTF-8");
+            resp.getWriter().write("Voici l'URL recu : "+resourcePath);
+            return;
+        }
 
-        resp.getWriter().write("Voici l'URL recu : "+path);
     }
-}
