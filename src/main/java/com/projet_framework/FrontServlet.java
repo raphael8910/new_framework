@@ -1,41 +1,62 @@
 package com.projet_framework;
 
-import java.io.IOException;
-
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
 
-public class FrontServlet extends HttpServlet{
+@WebServlet(urlPatterns = "/")
+public class FrontServlet extends HttpServlet {
 
-
-    public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException{
-       service(req, resp);
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        handleRequest(request, response);
     }
 
-    public void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException{
-       service(req, resp);
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        handleRequest(request, response);
     }
-    public void service(HttpServletRequest req, HttpServletResponse resp) throws IOException{
 
-        String contextPath = req.getContextPath();
-        String requestURI = req.getRequestURI();   
-        String resourcePath = requestURI.substring(contextPath.length()); 
+    private void handleRequest(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
 
-     
-        System.out.println("Resource path: " + resourcePath);
+        String url = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        String path = url.substring(contextPath.length());
 
-       
-        if (getServletContext().getResource(resourcePath) != null) {
-            try {
-                getServletContext().getRequestDispatcher(resourcePath).forward(req, resp);
-                return;
-            } catch (Exception e) {
-            }
-        }
-             resp.setContentType("text/plain; charset=UTF-8");
-            resp.getWriter().write("Voici l'URL recu : "+resourcePath);
+        // Empêcher l'accès aux répertoires protégés
+        if (path.startsWith("/WEB-INF") || path.startsWith("/META-INF")) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }
 
+        // Vérifier si le fichier existe et n'est pas le servlet lui-même
+        String realPath = getServletContext().getRealPath(path);
+        if (realPath != null) {
+            File file = new File(realPath);
+            if (file.exists() && !file.isDirectory()) {
+                request.getRequestDispatcher(path).forward(request, response);
+                return;
+            }
+        }
+
+        // Sinon, gérer la requête via le framework
+        response.setContentType("text/html; charset=UTF-8");
+        try (PrintWriter out = response.getWriter()) {
+            out.println("<!DOCTYPE html>");
+            out.println("<html>");
+            out.println("<head><meta charset='UTF-8'><title>Framework</title></head>");
+            out.println("<body>");
+            out.println("<h1>FrontServlet a intercepté l'URL : " + path + "</h1>");
+            out.println("</body>");
+            out.println("</html>");
+        }
     }
+}
