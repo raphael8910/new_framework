@@ -3,12 +3,14 @@ package com.projet_framework;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.util.List;
 
 import com.projet_framework.annotation.mapper.AnnotationMapping;
 import com.projet_framework.annotation.mapper.URLMapper;
 import com.projet_framework.scan.PackageScanner;
 import com.projet_framework.utility.ModelView;
+import com.projet_framework.utility.ParameterConverter;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -89,9 +91,34 @@ public class FrontServlet extends HttpServlet{
             Class<?> controllerClass = mapping.getClazz();
             Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
             
-            // Récupérer et invoquer la méthode
+            // Récupérer la méthode et ses paramètres
             Method method = mapping.getMethod();
-            Object result = method.invoke(controllerInstance);
+            Parameter[] parameters = method.getParameters();
+            
+            // Préparer les arguments pour l'invocation de la méthode
+            Object[] arguments = new Object[parameters.length];
+            
+            for (int i = 0; i < parameters.length; i++) {
+                Parameter param = parameters[i];
+                String paramName = param.getName();
+                Class<?> paramType = param.getType();
+                
+                // Récupérer la valeur du paramètre depuis la requête HTTP
+                String paramValue = req.getParameter(paramName);
+                
+                System.out.println("VALEUR -> "+paramName+ " :"+ paramValue);
+                // Convertir la valeur au type attendu
+                try {
+                    arguments[i] = ParameterConverter.convert(paramValue, paramType);
+                } catch (Exception e) {
+                    resp.setContentType("text/plain; charset=UTF-8");
+                    out.write("Erreur de conversion pour le paramètre '" + paramName + "': " + e.getMessage());
+                    return;
+                }
+            }
+            
+            // Invoquer la méthode avec les arguments
+            Object result = method.invoke(controllerInstance, arguments);
             
             // Traiter le résultat selon son type
             if (result == null) {
