@@ -1,11 +1,14 @@
 package com.projet_framework;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.lang.reflect.Method;
 import java.util.List;
 
 import com.projet_framework.annotation.mapper.AnnotationMapping;
 import com.projet_framework.annotation.mapper.URLMapper;
 import com.projet_framework.scan.PackageScanner;
+import com.projet_framework.utility.ModelView;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -49,18 +52,19 @@ public class FrontServlet extends HttpServlet{
     }
     
     public void service(HttpServletRequest req, HttpServletResponse resp) throws IOException{
-
+        PrintWriter out = resp.getWriter();
+        
         String contextPath = req.getContextPath();
         String requestURI = req.getRequestURI();   
         String resourcePath = requestURI.substring(contextPath.length()); 
 
-        System.out.println("Resource path: " + resourcePath);
-
+        // Vérifier si c'est une ressource statique
         if (getServletContext().getResource(resourcePath) != null) {
             try {
                 getServletContext().getRequestDispatcher(resourcePath).forward(req, resp);
                 return;
             } catch (Exception e) {
+                // Continue si ce n'est pas une ressource statique
             }
         }
         
@@ -68,20 +72,63 @@ public class FrontServlet extends HttpServlet{
         
         if (urlMapper == null) {
             resp.setContentType("text/plain; charset=UTF-8");
-            resp.getWriter().write("Erreur: URLMapper non initialisé");
+            out.write("Erreur: URLMapper non initialisé");
             return;
         }
         
         AnnotationMapping mapping = urlMapper.get(resourcePath);
         
-        resp.setContentType("text/plain; charset=UTF-8");
+        if (mapping == null) {
+            resp.setContentType("text/plain; charset=UTF-8");
+            out.write("Erreur: Aucun mapping trouvé pour l'URL: " + resourcePath);
+            return;
+        }
         
-        if (mapping != null) {
-            resp.getWriter().write("URL trouvée: " + resourcePath + "\n");
-            resp.getWriter().write("Classe: " + mapping.getClazz().getName() + "\n");
-            resp.getWriter().write("Méthode: " + mapping.getMethod().getName());
-        } else {
-            resp.getWriter().write("Voici l'URL reçu : " + resourcePath);
+        try {
+            // Instancier le controller
+            Class<?> controllerClass = mapping.getClazz();
+            Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+            
+            // Récupérer et invoquer la méthode
+            Method method = mapping.getMethod();
+            Object result = method.invoke(controllerInstance);
+            
+            // Traiter le résultat selon son type
+            if (result == null) {
+                resp.setContentType("text/plain; charset=UTF-8");
+                out.write("Erreur: La méthode a retourné null");
+                
+            } else if (result instanceof ModelView) {
+                ModelView modelView = (ModelView) result;
+                String page = modelView.getPage();
+                
+                if (page == null || page.isEmpty()) {
+                    resp.setContentType("text/plain; charset=UTF-8");
+                    out.write("Erreur: Le ModelView ne contient pas de page");
+                } else {
+                    // Vérifier si la page existe
+                    if (!page.startsWith("/")) {
+                        page = "/" + page;
+                    }
+                    
+                    if (getServletContext().getResource(page) != null) {
+                        getServletContext().getRequestDispatcher(page).forward(req, resp);
+                    } else {
+                        resp.setContentType("text/plain; charset=UTF-8");
+                        out.write("Erreur: La page '" + page + "' n'existe pas");
+                    }
+                }
+                
+            } else {
+                // Pour String, int, et autres types basiques
+                resp.setContentType("text/plain; charset=UTF-8");
+                out.write(result.toString());
+            }
+            
+        } catch (Exception e) {
+            resp.setContentType("text/plain; charset=UTF-8");
+            out.write("Erreur lors de l'exécution de la méthode: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }
