@@ -106,11 +106,17 @@ public class FrontServlet extends HttpServlet{
                     resp.setContentType("text/plain; charset=UTF-8");
                     out.write("Erreur: Le ModelView ne contient pas de page");
                 } else {
-                    // Vérifier si la page existe
+                    // Ajouter "/" au début si absent
                     if (!page.startsWith("/")) {
                         page = "/" + page;
                     }
                     
+                    // Ajouter tous les objets du model comme attributs de la requête
+                    for (String key : modelView.getModel().keySet()) {
+                        req.setAttribute(key, modelView.getModel().get(key));
+                    }
+                    
+                    // Vérifier si la page existe
                     if (getServletContext().getResource(page) != null) {
                         getServletContext().getRequestDispatcher(page).forward(req, resp);
                     } else {
