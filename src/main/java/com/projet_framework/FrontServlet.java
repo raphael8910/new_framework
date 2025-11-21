@@ -8,6 +8,7 @@ import java.util.List;
 
 import com.projet_framework.annotation.mapper.AnnotationMapping;
 import com.projet_framework.annotation.mapper.URLMapper;
+import com.projet_framework.annotation.parameter.RequestParam;
 import com.projet_framework.scan.PackageScanner;
 import com.projet_framework.utility.ModelView;
 import com.projet_framework.utility.ParameterConverter;
@@ -100,13 +101,24 @@ public class FrontServlet extends HttpServlet{
             
             for (int i = 0; i < parameters.length; i++) {
                 Parameter param = parameters[i];
-                String paramName = param.getName();
+                String paramName;
                 Class<?> paramType = param.getType();
+                
+                // Vérifier si le paramètre a l'annotation @RequestParam
+                if (param.isAnnotationPresent(RequestParam.class)) {
+                    // Utiliser le nom spécifié dans l'annotation
+                    RequestParam annotation = param.getAnnotation(RequestParam.class);
+                    paramName = annotation.paramName();
+                } else {
+                    // Utiliser le nom du paramètre de la méthode
+                    paramName = param.getName();
+                }
                 
                 // Récupérer la valeur du paramètre depuis la requête HTTP
                 String paramValue = req.getParameter(paramName);
                 
-                System.out.println("VALEUR -> "+paramName+ " :"+ paramValue);
+                System.out.println("VALEUR -> " + paramName + " : " + paramValue);
+                
                 // Convertir la valeur au type attendu
                 try {
                     arguments[i] = ParameterConverter.convert(paramValue, paramType);
