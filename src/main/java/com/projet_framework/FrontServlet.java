@@ -5,9 +5,12 @@ import java.io.PrintWriter;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.List;
+import java.util.Map;
 
 import com.projet_framework.annotation.mapper.AnnotationMapping;
+import com.projet_framework.annotation.mapper.MappingMatch;
 import com.projet_framework.annotation.mapper.URLMapper;
+import com.projet_framework.annotation.parameter.PathVariable;
 import com.projet_framework.annotation.parameter.RequestParam;
 import com.projet_framework.scan.PackageScanner;
 import com.projet_framework.utility.ModelView;
@@ -79,13 +82,17 @@ public class FrontServlet extends HttpServlet{
             return;
         }
         
-        AnnotationMapping mapping = urlMapper.get(resourcePath);
+        // Utiliser match() au lieu de get() pour supporter les patterns
+        MappingMatch match = urlMapper.match(resourcePath);
         
-        if (mapping == null) {
+        if (match == null) {
             resp.setContentType("text/plain; charset=UTF-8");
             out.write("Erreur: Aucun mapping trouvé pour l'URL: " + resourcePath);
             return;
         }
+        
+        AnnotationMapping mapping = match.getMapping();
+        Map<String, String> pathVariables = match.getPathVariables();
         
         try {
             // Instancier le controller
@@ -101,23 +108,40 @@ public class FrontServlet extends HttpServlet{
             
             for (int i = 0; i < parameters.length; i++) {
                 Parameter param = parameters[i];
-                String paramName;
+                String paramValue = null;
+                String paramName = null;
                 Class<?> paramType = param.getType();
                 
-                // Vérifier si le paramètre a l'annotation @RequestParam
-                if (param.isAnnotationPresent(RequestParam.class)) {
-                    // Utiliser le nom spécifié dans l'annotation
+                // Déterminer la source du paramètre selon l'annotation
+                if (param.isAnnotationPresent(PathVariable.class)) {
+                    // 1. PathVariable - récupérer depuis l'URL
+                    PathVariable annotation = param.getAnnotation(PathVariable.class);
+                    paramName = annotation.name();
+                    paramValue = pathVariables.get(paramName);
+                    
+                    if (paramValue == null) {
+                        resp.setContentType("text/plain; charset=UTF-8");
+                        out.write("Erreur: Variable de chemin '" + paramName + "' non trouvée dans l'URL");
+                        return;
+                    }
+                    
+                    System.out.println("PathVariable -> " + paramName + " : " + paramValue);
+                    
+                } else if (param.isAnnotationPresent(RequestParam.class)) {
+                    // 2. RequestParam - récupérer depuis les query parameters
                     RequestParam annotation = param.getAnnotation(RequestParam.class);
                     paramName = annotation.paramName();
+                    paramValue = req.getParameter(paramName);
+                    
+                    System.out.println("RequestParam -> " + paramName + " : " + paramValue);
+                    
                 } else {
-                    // Utiliser le nom du paramètre de la méthode
+                    // 3. Pas d'annotation - utiliser le nom du paramètre depuis les query parameters
                     paramName = param.getName();
+                    paramValue = req.getParameter(paramName);
+                    
+                    System.out.println("Parameter -> " + paramName + " : " + paramValue);
                 }
-                
-                // Récupérer la valeur du paramètre depuis la requête HTTP
-                String paramValue = req.getParameter(paramName);
-                
-                System.out.println("VALEUR -> " + paramName + " : " + paramValue);
                 
                 // Convertir la valeur au type attendu
                 try {
