@@ -7,6 +7,7 @@ import java.lang.annotation.ElementType;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
-public @interface Get {
+public @interface RequestUrl {
     String url();
+    String[] method() default {"GET", "POST"}; 
 }

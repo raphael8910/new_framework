@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 public class URLMapper {
-    private Map<String, AnnotationMapping> exactMappings = new HashMap<>();
+    private Map<String, List<AnnotationMapping>> exactMappings = new HashMap<>();
     private List<AnnotationMapping> patternMappings = new ArrayList<>();
 
     public void map(AnnotationMapping mapping) throws Exception {
@@ -15,22 +15,36 @@ public class URLMapper {
         if (url.contains("{")) {
             patternMappings.add(mapping);
         } else {
-            if (exactMappings.containsKey(url)) {
-                throw new Exception("Duplicate mapping for " + url);
+            if (!exactMappings.containsKey(url)) {
+                exactMappings.put(url, new ArrayList<>());
             }
-            exactMappings.put(url, mapping);
+            
+            List<AnnotationMapping> mappingsForUrl = exactMappings.get(url);
+            for (AnnotationMapping existing : mappingsForUrl) {
+                if (existing.getHttpMethod().equals(mapping.getHttpMethod())) {
+                    throw new Exception("Duplicate mapping for " + mapping.getHttpMethod() + " " + url);
+                }
+            }
+            
+            mappingsForUrl.add(mapping);
         }
     }
-
-    public MappingMatch match(String url) {
-        if (exactMappings.containsKey(url)) {
-            return new MappingMatch(exactMappings.get(url), new HashMap<>());
+    public MappingMatch match(String url, String httpMethod) {
+        List<AnnotationMapping> mappingsForUrl = exactMappings.get(url);
+        if (mappingsForUrl != null) {
+            for (AnnotationMapping mapping : mappingsForUrl) {
+                if (mapping.getHttpMethod().equals(httpMethod)) {
+                    return new MappingMatch(mapping, new HashMap<>());
+                }
+            }
         }
         
         for (AnnotationMapping mapping : patternMappings) {
-            Map<String, String> pathVars = matchPattern(mapping.getUrl(), url);
-            if (pathVars != null) {
-                return new MappingMatch(mapping, pathVars);
+            if (mapping.getHttpMethod().equals(httpMethod)) {
+                Map<String, String> pathVars = matchPattern(mapping.getUrl(), url);
+                if (pathVars != null) {
+                    return new MappingMatch(mapping, pathVars);
+                }
             }
         }
         
@@ -64,8 +78,28 @@ public class URLMapper {
         return pathVariables;
     }
 
+    public List<String> getAvailableMethodsForUrl(String url) {
+        List<String> methods = new ArrayList<>();
+        
+        List<AnnotationMapping> mappingsForUrl = exactMappings.get(url);
+        if (mappingsForUrl != null) {
+            for (AnnotationMapping mapping : mappingsForUrl) {
+                methods.add(mapping.getHttpMethod());
+            }
+        }
+        
+        for (AnnotationMapping mapping : patternMappings) {
+            Map<String, String> pathVars = matchPattern(mapping.getUrl(), url);
+            if (pathVars != null) {
+                methods.add(mapping.getHttpMethod());
+            }
+        }
+        
+        return methods;
+    }
+
     public AnnotationMapping get(String url) {
-        MappingMatch match = match(url);
+        MappingMatch match = match(url, "GET");
         return match != null ? match.getMapping() : null;
     }
 }

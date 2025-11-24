@@ -8,7 +8,9 @@ import java.util.Enumeration;
 import java.util.List;
 
 import com.projet_framework.annotation.mapper.AnnotationMapping;
-import com.projet_framework.annotation.method.Get;
+import com.projet_framework.annotation.method.GetUrl;
+import com.projet_framework.annotation.method.PostUrl;
+import com.projet_framework.annotation.method.RequestUrl;
 import com.projet_framework.annotation.type.Controller;
 
 public class PackageScanner {
@@ -24,20 +26,40 @@ public class PackageScanner {
             if (controller != null) {
                 Method[] methods = clazz.getDeclaredMethods();
                 for (Method method : methods) {
-                    Get get = method.getAnnotation(Get.class);
-                    String methodUrl = get.url();
-                    String fullUrl = (baseUrl != null) ? normalizeUrl(baseUrl + methodUrl) : normalizeUrl(methodUrl);
-                    handlers.add(new AnnotationMapping(clazz, method, fullUrl));
+                    
+                    if (method.isAnnotationPresent(GetUrl.class)) {
+                        GetUrl getUrl = method.getAnnotation(GetUrl.class);
+                        String methodUrl = getUrl.url();
+                        String fullUrl = (baseUrl != null) ? normalizeUrl(baseUrl + methodUrl) : normalizeUrl(methodUrl);
+                        handlers.add(new AnnotationMapping(clazz, method, fullUrl, "GET"));
+                    }
+                    
+                    if (method.isAnnotationPresent(PostUrl.class)) {
+                        PostUrl postUrl = method.getAnnotation(PostUrl.class);
+                        String methodUrl = postUrl.url();
+                        String fullUrl = (baseUrl != null) ? normalizeUrl(baseUrl + methodUrl) : normalizeUrl(methodUrl);
+                        handlers.add(new AnnotationMapping(clazz, method, fullUrl, "POST"));
+                    }
+                    
+                    if (method.isAnnotationPresent(RequestUrl.class)) {
+                        RequestUrl requestUrl = method.getAnnotation(RequestUrl.class);
+                        String methodUrl = requestUrl.url();
+                        String fullUrl = (baseUrl != null) ? normalizeUrl(baseUrl + methodUrl) : normalizeUrl(methodUrl);
+                        
+                        String[] httpMethods = requestUrl.method();
+                        for (String httpMethod : httpMethods) {
+                            handlers.add(new AnnotationMapping(clazz, method, fullUrl, httpMethod.toUpperCase()));
+                        }
+                    }
                 }
             } else {
-                System.out.println("Class : " + clazz.getName() + "is not annotated");
+                System.out.println("Class : " + clazz.getName() + " is not annotated");
             }
         }
         return handlers;
     }
 
     private static String normalizeUrl(String url) {
-        // Simple normalization: ensure starts with /, no double //
         url = url.replaceAll("//+", "/");
         if (!url.startsWith("/")) {
             url = "/" + url;
@@ -72,5 +94,4 @@ public class PackageScanner {
         }
         return classes;
     }
-
 }

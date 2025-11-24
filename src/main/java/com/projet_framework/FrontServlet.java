@@ -54,6 +54,7 @@ public class FrontServlet extends HttpServlet{
     }
 
     public void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException{
+       req.setCharacterEncoding("UTF-8"); 
        service(req, resp);
     }
     
@@ -64,13 +65,11 @@ public class FrontServlet extends HttpServlet{
         String requestURI = req.getRequestURI();   
         String resourcePath = requestURI.substring(contextPath.length()); 
 
-        // Vérifier si c'est une ressource statique
         if (getServletContext().getResource(resourcePath) != null) {
             try {
                 getServletContext().getRequestDispatcher(resourcePath).forward(req, resp);
                 return;
             } catch (Exception e) {
-                // Continue si ce n'est pas une ressource statique
             }
         }
         
@@ -82,12 +81,20 @@ public class FrontServlet extends HttpServlet{
             return;
         }
         
-        // Utiliser match() au lieu de get() pour supporter les patterns
-        MappingMatch match = urlMapper.match(resourcePath);
+        String httpMethod = req.getMethod(); 
+        
+        MappingMatch match = urlMapper.match(resourcePath, httpMethod);
         
         if (match == null) {
+            List<String> availableMethods = urlMapper.getAvailableMethodsForUrl(resourcePath);
+            
             resp.setContentType("text/plain; charset=UTF-8");
-            out.write("Erreur: Aucun mapping trouvé pour l'URL: " + resourcePath);
+            if (availableMethods.isEmpty()) {
+                out.write("Erreur: Aucun mapping trouvé pour l'URL: " + resourcePath);
+            } else {
+                out.write("Erreur: L'URL " + resourcePath + " existe mais ne supporte pas la méthode " + httpMethod + 
+                         ".\nMéthodes disponibles: " + availableMethods);
+            }
             return;
         }
         
@@ -95,15 +102,12 @@ public class FrontServlet extends HttpServlet{
         Map<String, String> pathVariables = match.getPathVariables();
         
         try {
-            // Instancier le controller
             Class<?> controllerClass = mapping.getClazz();
             Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
             
-            // Récupérer la méthode et ses paramètres
             Method method = mapping.getMethod();
             Parameter[] parameters = method.getParameters();
             
-            // Préparer les arguments pour l'invocation de la méthode
             Object[] arguments = new Object[parameters.length];
             
             for (int i = 0; i < parameters.length; i++) {
@@ -112,9 +116,7 @@ public class FrontServlet extends HttpServlet{
                 String paramName = null;
                 Class<?> paramType = param.getType();
                 
-                // Déterminer la source du paramètre selon l'annotation
                 if (param.isAnnotationPresent(PathVariable.class)) {
-                    // 1. PathVariable - récupérer depuis l'URL
                     PathVariable annotation = param.getAnnotation(PathVariable.class);
                     paramName = annotation.name();
                     paramValue = pathVariables.get(paramName);
@@ -128,7 +130,6 @@ public class FrontServlet extends HttpServlet{
                     System.out.println("PathVariable -> " + paramName + " : " + paramValue);
                     
                 } else if (param.isAnnotationPresent(RequestParam.class)) {
-                    // 2. RequestParam - récupérer depuis les query parameters
                     RequestParam annotation = param.getAnnotation(RequestParam.class);
                     paramName = annotation.paramName();
                     paramValue = req.getParameter(paramName);
@@ -136,14 +137,12 @@ public class FrontServlet extends HttpServlet{
                     System.out.println("RequestParam -> " + paramName + " : " + paramValue);
                     
                 } else {
-                    // 3. Pas d'annotation - utiliser le nom du paramètre depuis les query parameters
                     paramName = param.getName();
                     paramValue = req.getParameter(paramName);
                     
                     System.out.println("Parameter -> " + paramName + " : " + paramValue);
                 }
                 
-                // Convertir la valeur au type attendu
                 try {
                     arguments[i] = ParameterConverter.convert(paramValue, paramType);
                 } catch (Exception e) {
@@ -153,10 +152,8 @@ public class FrontServlet extends HttpServlet{
                 }
             }
             
-            // Invoquer la méthode avec les arguments
             Object result = method.invoke(controllerInstance, arguments);
             
-            // Traiter le résultat selon son type
             if (result == null) {
                 resp.setContentType("text/plain; charset=UTF-8");
                 out.write("Erreur: La méthode a retourné null");
@@ -169,17 +166,14 @@ public class FrontServlet extends HttpServlet{
                     resp.setContentType("text/plain; charset=UTF-8");
                     out.write("Erreur: Le ModelView ne contient pas de page");
                 } else {
-                    // Ajouter "/" au début si absent
                     if (!page.startsWith("/")) {
                         page = "/" + page;
                     }
                     
-                    // Ajouter tous les objets du model comme attributs de la requête
                     for (String key : modelView.getModel().keySet()) {
                         req.setAttribute(key, modelView.getModel().get(key));
                     }
                     
-                    // Vérifier si la page existe
                     if (getServletContext().getResource(page) != null) {
                         getServletContext().getRequestDispatcher(page).forward(req, resp);
                     } else {
@@ -189,7 +183,6 @@ public class FrontServlet extends HttpServlet{
                 }
                 
             } else {
-                // Pour String, int, et autres types basiques
                 resp.setContentType("text/plain; charset=UTF-8");
                 out.write(result.toString());
             }
