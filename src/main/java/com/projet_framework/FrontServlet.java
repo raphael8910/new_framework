@@ -2,6 +2,7 @@ package com.projet_framework;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.Enumeration;
@@ -12,6 +13,7 @@ import java.util.Map;
 import com.projet_framework.annotation.mapper.AnnotationMapping;
 import com.projet_framework.annotation.mapper.MappingMatch;
 import com.projet_framework.annotation.mapper.URLMapper;
+import com.projet_framework.annotation.parameter.EntityBody;
 import com.projet_framework.annotation.parameter.PathVariable;
 import com.projet_framework.annotation.parameter.RequestParam;
 import com.projet_framework.scan.PackageScanner;
@@ -118,7 +120,51 @@ public class FrontServlet extends HttpServlet {
                 String paramName = null;
                 Class<?> paramType = param.getType();
 
-                if (paramType == Map.class) {
+                if (param.isAnnotationPresent(EntityBody.class)) {
+                    Class<?> entityClass = param.getType();
+
+                    try {
+                        Object entityInstance = entityClass.getDeclaredConstructor().newInstance();
+
+                        Field[] fields = entityClass.getDeclaredFields();
+
+                        System.out.println("Name of the fields");
+                        for (int j = 0; j < fields.length; j++) {
+                            System.out.println("Field n" + j + " :" + fields[j]);
+                        }
+
+                        for (Field field : fields) {
+                            field.setAccessible(true);
+
+                            String fieldName = field.getName();
+                            String fieldValue = req.getParameter(fieldName);
+                            System.out.println("Field name : " + fieldName);
+                            System.out.println("Field value " + fieldValue);
+                            System.out.println();
+
+                            if (fieldValue != null) {
+                                Object convertedValue = ParameterConverter.convert(fieldValue, field.getType());
+
+                                field.set(entityInstance, convertedValue);
+
+                                System.out.println("EntityBody -> " + fieldName + " : " + convertedValue);
+                            }
+                        }
+                        if (entityInstance != null) {
+                            System.out.println("Entite " + entityInstance.getClass().getSimpleName() + " not null");
+                        } else
+                            System.out.println("Entity null");
+
+                        arguments[i] = entityInstance;
+                        break ;
+                    } catch (Exception e) {
+                        resp.setContentType("text/plain; charset=UTF-8");
+                        out.write("Erreur lors de la création de l'entité: " + e.getMessage());
+                        e.printStackTrace();
+                        return;
+                    }
+
+                } else if (paramType == Map.class) {
                     Map<String, Object> resultMap = new HashMap<>();
                     Enumeration<String> paramNames = req.getParameterNames();
 
@@ -127,7 +173,7 @@ public class FrontServlet extends HttpServlet {
                         Object value = req.getParameter(paramName1);
 
                         resultMap.put(paramName1, value);
-                    
+
                     }
                     arguments[i] = resultMap;
                     break;
@@ -166,7 +212,11 @@ public class FrontServlet extends HttpServlet {
                     return;
                 }
             }
-
+            System.out.println("Arguments length : " + arguments.length);
+            if (arguments.length >= 1) {
+                System.out.println("Argument length > 0");
+                System.out.println(arguments[0].getClass().getSimpleName());
+            }
             Object result = method.invoke(controllerInstance, arguments);
 
             if (result == null) {
@@ -186,6 +236,8 @@ public class FrontServlet extends HttpServlet {
                     }
 
                     for (String key : modelView.getModel().keySet()) {
+                        System.out.println("Key : " + key);
+                        System.out.println("Value : " + modelView.getModel().get(key));
                         req.setAttribute(key, modelView.getModel().get(key));
                     }
 
