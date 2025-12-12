@@ -5,6 +5,7 @@ import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
@@ -13,10 +14,12 @@ import java.util.Map;
 import com.projet_framework.annotation.mapper.AnnotationMapping;
 import com.projet_framework.annotation.mapper.MappingMatch;
 import com.projet_framework.annotation.mapper.URLMapper;
+import com.projet_framework.annotation.method.JSON;
 import com.projet_framework.annotation.parameter.EntityBody;
 import com.projet_framework.annotation.parameter.PathVariable;
 import com.projet_framework.annotation.parameter.RequestParam;
 import com.projet_framework.scan.PackageScanner;
+import com.projet_framework.utility.JsonResponse;
 import com.projet_framework.utility.ModelView;
 import com.projet_framework.utility.ParameterConverter;
 
@@ -105,13 +108,14 @@ public class FrontServlet extends HttpServlet {
         AnnotationMapping mapping = match.getMapping();
         Map<String, String> pathVariables = match.getPathVariables();
 
+        Method method = mapping.getMethod();
+        boolean isJsonResponse = method.isAnnotationPresent(JSON.class);
+
         try {
             Class<?> controllerClass = mapping.getClazz();
             Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
 
-            Method method = mapping.getMethod();
             Parameter[] parameters = method.getParameters();
-
             Object[] arguments = new Object[parameters.length];
 
             for (int i = 0; i < parameters.length; i++) {
@@ -128,40 +132,34 @@ public class FrontServlet extends HttpServlet {
 
                         Field[] fields = entityClass.getDeclaredFields();
 
-                        System.out.println("Name of the fields");
-                        for (int j = 0; j < fields.length; j++) {
-                            System.out.println("Field n" + j + " :" + fields[j]);
-                        }
-
                         for (Field field : fields) {
                             field.setAccessible(true);
 
                             String fieldName = field.getName();
                             String fieldValue = req.getParameter(fieldName);
-                            System.out.println("Field name : " + fieldName);
-                            System.out.println("Field value " + fieldValue);
-                            System.out.println();
 
                             if (fieldValue != null) {
                                 Object convertedValue = ParameterConverter.convert(fieldValue, field.getType());
-
                                 field.set(entityInstance, convertedValue);
-
                                 System.out.println("EntityBody -> " + fieldName + " : " + convertedValue);
                             }
                         }
-                        if (entityInstance != null) {
-                            System.out.println("Entite " + entityInstance.getClass().getSimpleName() + " not null");
-                        } else
-                            System.out.println("Entity null");
 
                         arguments[i] = entityInstance;
-                        break ;
+                        break;
                     } catch (Exception e) {
-                        resp.setContentType("text/plain; charset=UTF-8");
-                        out.write("Erreur lors de la création de l'entité: " + e.getMessage());
-                        e.printStackTrace();
-                        return;
+                        if (isJsonResponse) {
+                            JsonResponse jsonResponse = new JsonResponse(404, "error", null, 
+                                "Erreur lors de la création de l'entité: " + e.getMessage());
+                            resp.setContentType("application/json; charset=UTF-8");
+                            out.write(jsonResponse.toJson());
+                            return;
+                        } else {
+                            resp.setContentType("text/plain; charset=UTF-8");
+                            out.write("Erreur lors de la création de l'entité: " + e.getMessage());
+                            e.printStackTrace();
+                            return;
+                        }
                     }
 
                 } else if (paramType == Map.class) {
@@ -171,9 +169,7 @@ public class FrontServlet extends HttpServlet {
                     while (paramNames.hasMoreElements()) {
                         String paramName1 = paramNames.nextElement();
                         Object value = req.getParameter(paramName1);
-
                         resultMap.put(paramName1, value);
-
                     }
                     arguments[i] = resultMap;
                     break;
@@ -183,9 +179,17 @@ public class FrontServlet extends HttpServlet {
                     paramValue = pathVariables.get(paramName);
 
                     if (paramValue == null) {
-                        resp.setContentType("text/plain; charset=UTF-8");
-                        out.write("Erreur: Variable de chemin '" + paramName + "' non trouvée dans l'URL");
-                        return;
+                        if (isJsonResponse) {
+                            JsonResponse jsonResponse = new JsonResponse(404, "error", null, 
+                                "Variable de chemin '" + paramName + "' non trouvée dans l'URL");
+                            resp.setContentType("application/json; charset=UTF-8");
+                            out.write(jsonResponse.toJson());
+                            return;
+                        } else {
+                            resp.setContentType("text/plain; charset=UTF-8");
+                            out.write("Erreur: Variable de chemin '" + paramName + "' non trouvée dans l'URL");
+                            return;
+                        }
                     }
 
                     System.out.println("PathVariable -> " + paramName + " : " + paramValue);
@@ -207,17 +211,37 @@ public class FrontServlet extends HttpServlet {
                 try {
                     arguments[i] = ParameterConverter.convert(paramValue, paramType);
                 } catch (Exception e) {
-                    resp.setContentType("text/plain; charset=UTF-8");
-                    out.write("Erreur de conversion pour le paramètre '" + paramName + "': " + e.getMessage());
-                    return;
+                    if (isJsonResponse) {
+                        JsonResponse jsonResponse = new JsonResponse(404, "error", null, 
+                            "Erreur de conversion pour le paramètre '" + paramName + "': " + e.getMessage());
+                        resp.setContentType("application/json; charset=UTF-8");
+                        out.write(jsonResponse.toJson());
+                        return;
+                    } else {
+                        resp.setContentType("text/plain; charset=UTF-8");
+                        out.write("Erreur de conversion pour le paramètre '" + paramName + "': " + e.getMessage());
+                        return;
+                    }
                 }
             }
-            System.out.println("Arguments length : " + arguments.length);
-            if (arguments.length >= 1) {
-                System.out.println("Argument length > 0");
-                System.out.println(arguments[0].getClass().getSimpleName());
-            }
+
             Object result = method.invoke(controllerInstance, arguments);
+
+            if (isJsonResponse) {
+                Object data = null;
+
+                if (result instanceof ModelView) {
+                    ModelView modelView = (ModelView) result;
+                    data = modelView.getModel();
+                } else {
+                    data = result;
+                }
+
+                JsonResponse jsonResponse = new JsonResponse(200, "success", data, null);
+                resp.setContentType("application/json; charset=UTF-8");
+                out.write(jsonResponse.toJson());
+                return;
+            }
 
             if (result == null) {
                 resp.setContentType("text/plain; charset=UTF-8");
@@ -236,8 +260,6 @@ public class FrontServlet extends HttpServlet {
                     }
 
                     for (String key : modelView.getModel().keySet()) {
-                        System.out.println("Key : " + key);
-                        System.out.println("Value : " + modelView.getModel().get(key));
                         req.setAttribute(key, modelView.getModel().get(key));
                     }
 
@@ -255,9 +277,16 @@ public class FrontServlet extends HttpServlet {
             }
 
         } catch (Exception e) {
-            resp.setContentType("text/plain; charset=UTF-8");
-            out.write("Erreur lors de l'exécution de la méthode: " + e.getMessage());
-            e.printStackTrace();
+            if (isJsonResponse) {
+                JsonResponse jsonResponse = new JsonResponse(404, "error", null, 
+                    "Erreur lors de l'exécution de la méthode: " + e.getMessage());
+                resp.setContentType("application/json; charset=UTF-8");
+                out.write(jsonResponse.toJson());
+            } else {
+                resp.setContentType("text/plain; charset=UTF-8");
+                out.write("Erreur lors de l'exécution de la méthode: " + e.getMessage());
+                e.printStackTrace();
+            }
         }
     }
 }
