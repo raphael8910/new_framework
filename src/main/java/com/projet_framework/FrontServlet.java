@@ -24,10 +24,13 @@ import com.projet_framework.utility.ModelView;
 import com.projet_framework.utility.ParameterConverter;
 
 import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Part;
 
+@MultipartConfig
 public class FrontServlet extends HttpServlet {
 
     @Override
@@ -118,6 +121,9 @@ public class FrontServlet extends HttpServlet {
             Parameter[] parameters = method.getParameters();
             Object[] arguments = new Object[parameters.length];
 
+            boolean isMultipart = req.getContentType() != null && 
+                                  req.getContentType().toLowerCase().contains("multipart/form-data");
+
             for (int i = 0; i < parameters.length; i++) {
                 Parameter param = parameters[i];
                 String paramValue = null;
@@ -162,6 +168,40 @@ public class FrontServlet extends HttpServlet {
                         }
                     }
 
+                } else if (paramType == Map.class && isMultipart) {
+                    
+                    try {
+                        Map<String, byte[]> filesMap = new HashMap<>();
+                        
+                        Collection<Part> parts = req.getParts();
+                        for (Part part : parts) {
+                            String fileName = part.getSubmittedFileName();
+                            if (fileName != null && !fileName.isEmpty()) {
+                                byte[] fileBytes = part.getInputStream().readAllBytes();
+                                filesMap.put(fileName, fileBytes);
+                                
+                                System.out.println("Fichier uploadé -> " + fileName + " (" + fileBytes.length + " bytes)");
+                            }
+                        }
+                        
+                        arguments[i] = filesMap;
+                        continue; 
+                        
+                    } catch (Exception e) {
+                        if (isJsonResponse) {
+                            JsonResponse jsonResponse = new JsonResponse(404, "error", null, 
+                                "Erreur lors de l'upload des fichiers: " + e.getMessage());
+                            resp.setContentType("application/json; charset=UTF-8");
+                            out.write(jsonResponse.toJson());
+                            return;
+                        } else {
+                            resp.setContentType("text/plain; charset=UTF-8");
+                            out.write("Erreur lors de l'upload des fichiers: " + e.getMessage());
+                            e.printStackTrace();
+                            return;
+                        }
+                    }
+                    
                 } else if (paramType == Map.class) {
                     Map<String, Object> resultMap = new HashMap<>();
                     Enumeration<String> paramNames = req.getParameterNames();
@@ -172,7 +212,8 @@ public class FrontServlet extends HttpServlet {
                         resultMap.put(paramName1, value);
                     }
                     arguments[i] = resultMap;
-                    break;
+                    continue; 
+                    
                 } else if (param.isAnnotationPresent(PathVariable.class)) {
                     PathVariable annotation = param.getAnnotation(PathVariable.class);
                     paramName = annotation.name();
@@ -197,13 +238,23 @@ public class FrontServlet extends HttpServlet {
                 } else if (param.isAnnotationPresent(RequestParam.class)) {
                     RequestParam annotation = param.getAnnotation(RequestParam.class);
                     paramName = annotation.paramName();
-                    paramValue = req.getParameter(paramName);
+                    
+                    if (isMultipart) {
+                        paramValue = req.getParameter(paramName);
+                    } else {
+                        paramValue = req.getParameter(paramName);
+                    }
 
                     System.out.println("RequestParam -> " + paramName + " : " + paramValue);
 
                 } else {
                     paramName = param.getName();
-                    paramValue = req.getParameter(paramName);
+                    
+                    if (isMultipart) {
+                        paramValue = req.getParameter(paramName);
+                    } else {
+                        paramValue = req.getParameter(paramName);
+                    }
 
                     System.out.println("Parameter -> " + paramName + " : " + paramValue);
                 }
