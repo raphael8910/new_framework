@@ -18,10 +18,12 @@ import com.projet_framework.annotation.method.JSON;
 import com.projet_framework.annotation.parameter.EntityBody;
 import com.projet_framework.annotation.parameter.PathVariable;
 import com.projet_framework.annotation.parameter.RequestParam;
+import com.projet_framework.annotation.parameter.Session;
 import com.projet_framework.scan.PackageScanner;
 import com.projet_framework.utility.JsonResponse;
 import com.projet_framework.utility.ModelView;
 import com.projet_framework.utility.ParameterConverter;
+import com.projet_framework.utility.SessionMap;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
@@ -121,6 +123,7 @@ public class FrontServlet extends HttpServlet {
             Parameter[] parameters = method.getParameters();
             Object[] arguments = new Object[parameters.length];
 
+            // Vérifier si c'est une requête multipart
             boolean isMultipart = req.getContentType() != null && 
                                   req.getContentType().toLowerCase().contains("multipart/form-data");
 
@@ -169,7 +172,7 @@ public class FrontServlet extends HttpServlet {
                     }
 
                 } else if (paramType == Map.class && isMultipart) {
-                    
+                    // Gestion de l'upload de fichiers avec Map<String, byte[]>
                     try {
                         Map<String, byte[]> filesMap = new HashMap<>();
                         
@@ -185,7 +188,7 @@ public class FrontServlet extends HttpServlet {
                         }
                         
                         arguments[i] = filesMap;
-                        continue; 
+                        continue;
                         
                     } catch (Exception e) {
                         if (isJsonResponse) {
@@ -214,6 +217,22 @@ public class FrontServlet extends HttpServlet {
                     arguments[i] = resultMap;
                     continue; 
                     
+                } else if (paramType == jakarta.servlet.ServletContext.class) {
+                    arguments[i] = getServletContext();
+                    continue;
+                    
+                } else if (paramType == jakarta.servlet.ServletContext.class) {
+                    arguments[i] = getServletContext();
+                    continue;
+                    
+                } else if (param.isAnnotationPresent(Session.class) && paramType == Map.class) {
+                    jakarta.servlet.http.HttpSession httpSession = req.getSession();
+                    SessionMap sessionMap = new SessionMap(httpSession);
+                    arguments[i] = sessionMap;
+                    
+                    System.out.println("Session Map créé et lié à HttpSession");
+                    continue;
+                    
                 } else if (param.isAnnotationPresent(PathVariable.class)) {
                     PathVariable annotation = param.getAnnotation(PathVariable.class);
                     paramName = annotation.name();
@@ -240,6 +259,7 @@ public class FrontServlet extends HttpServlet {
                     paramName = annotation.paramName();
                     
                     if (isMultipart) {
+                        // En multipart, utiliser req.getParameter
                         paramValue = req.getParameter(paramName);
                     } else {
                         paramValue = req.getParameter(paramName);
